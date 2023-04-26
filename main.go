@@ -23,8 +23,9 @@ const (
 )
 
 var (
-	auth *spotifyauth.Authenticator
-	ch   = make(chan *spotify.Client)
+	// auth *spotifyauth.Authenticator
+	// ch = make(chan *spotify.Client)
+	ch = make(chan *ClientToken)
 )
 
 type Config struct {
@@ -32,9 +33,14 @@ type Config struct {
 	ClientSecret string `json:"client_secret"`
 }
 
+type ClientToken struct {
+	Client *spotify.Client
+	Token  *oauth2.Token
+}
+
 func main() {
 	if len(os.Args) < 3 {
-		fmt.Println("Usage: shopifyapi.exe <command> <argument>")
+		fmt.Println("Usage: spotify.exe <command> <argument>")
 		return
 	}
 
@@ -85,7 +91,10 @@ func main() {
 		fmt.Println("Please log in to Spotify by visiting the following page in your browser:", url)
 
 		// Wait for the user to authenticate and receive the client
-		client = <-ch
+		clientToken := <-ch
+		// client := clientToken.Client
+		token = clientToken.Token
+		// client = <-ch
 		shutdown(server, ctx)
 
 		// token, err = client.Token()
@@ -105,7 +114,7 @@ func main() {
 		switch arg {
 		case "download":
 			if len(os.Args) < 4 {
-				fmt.Println("Usage: shopifyapi.exe playlists download <playlist_name>")
+				fmt.Println("Usage: spotify.exe playlists download <playlist_name>")
 				return
 			}
 			playlistName := os.Args[3]
@@ -163,7 +172,7 @@ func completeAuth(w http.ResponseWriter, r *http.Request, auth *spotifyauth.Auth
 	// Use the token to get an authenticated client
 	client := spotify.New(auth.Client(ctx, token))
 	fmt.Fprintf(w, "Login completed! You can close this window.")
-	ch <- client
+	ch <- &ClientToken{Client: client, Token: token}
 }
 
 func downloadPlaylist(ctx context.Context, client *spotify.Client, playlistName string) error {
@@ -191,9 +200,23 @@ func downloadPlaylist(ctx context.Context, client *spotify.Client, playlistName 
 		return errors.New("playlist not found")
 	}
 
-	tracks, err := client.GetPlaylistTracks(ctx, playlistID)
-	if err != nil {
-		return err
+	var allTracks []spotify.PlaylistTrack
+	offset := 0
+	limit := 100
+
+	for {
+		playlistTracks, err := client.GetPlaylistTracks(ctx, playlistID, spotify.Limit(limit), spotify.Offset(offset))
+		if err != nil {
+			return err
+		}
+
+		allTracks = append(allTracks, playlistTracks.Tracks...)
+
+		if len(allTracks) >= playlistTracks.Total {
+			break
+		}
+
+		offset += limit
 	}
 
 	playlistFile, err := os.Create(fmt.Sprintf("%s.json", playlistName))
@@ -204,7 +227,7 @@ func downloadPlaylist(ctx context.Context, client *spotify.Client, playlistName 
 
 	encoder := json.NewEncoder(playlistFile)
 	encoder.SetIndent("", "  ")
-	return encoder.Encode(tracks.Tracks)
+	return encoder.Encode(allTracks)
 }
 
 func listPlaylists(ctx context.Context, client *spotify.Client) error {
