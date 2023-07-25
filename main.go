@@ -219,7 +219,7 @@ func downloadPlaylist(ctx context.Context, client *spotify.Client, playlistName 
 		offset += limit
 	}
 
-	playlistFile, err := os.Create(fmt.Sprintf("%s.json", playlistName))
+	playlistFile, err := os.Create(fmt.Sprintf("downloads/%s.json", playlistName))
 	if err != nil {
 		return err
 	}
