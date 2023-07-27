@@ -67,22 +67,18 @@ func main() {
 	httpClient := oauth2.NewClient(context.Background(), oauth2.StaticTokenSource(token))
 	client := spotify.New(httpClient)
 
-	// var client spotify.Client
 	ctx := context.Background()
 
 	if err == nil && token.Valid() {
 		client = spotify.New(auth.Client(ctx, token))
 	} else {
-		// Start HTTP server for the OAuth2 callback
 		http.HandleFunc("/callback", func(w http.ResponseWriter, r *http.Request) {
 			completeAuth(w, r, auth, ctx)
 		})
 
-		// go http.ListenAndServe(":8080", nil)
 		server := &http.Server{Addr: ":8080"}
 		go func() {
 			if err := server.ListenAndServe(); err != http.ErrServerClosed {
-				// log.Fatalf("ListenAndServe(): %v", err)
 				fmt.Println("ListenAndServe():", err)
 			}
 		}()
@@ -90,14 +86,10 @@ func main() {
 		url := auth.AuthURL(state)
 		fmt.Println("Please log in to Spotify by visiting the following page in your browser:", url)
 
-		// Wait for the user to authenticate and receive the client
 		clientToken := <-ch
-		// client := clientToken.Client
 		token = clientToken.Token
-		// client = <-ch
 		shutdown(server, ctx)
 
-		// token, err = client.Token()
 		if err == nil {
 			err = writeJSONToFile(tokenFilename, token)
 			if err != nil {
@@ -128,6 +120,13 @@ func main() {
 			err := listPlaylists(ctx, client)
 			if err != nil {
 				fmt.Println("Error listing playlists:", err)
+			}
+		case "download-all":
+			err := downloadPlaylists(ctx, client)
+			if err != nil {
+				fmt.Println("Error downloading playlists:", err)
+			} else {
+				fmt.Println("All playlists downloaded successfully.")
 			}
 		default:
 			fmt.Println("Invalid argument for 'playlists' command.")
@@ -251,4 +250,27 @@ func listPlaylists(ctx context.Context, client *spotify.Client) error {
 
 func shutdown(server *http.Server, ctx context.Context) error {
 	return server.Shutdown(ctx)
+}
+
+func downloadPlaylists(ctx context.Context, client *spotify.Client) error {
+	user, err := client.CurrentUser(ctx)
+	if err != nil {
+		return err
+	}
+
+	playlists, err := client.GetPlaylistsForUser(ctx, user.ID)
+	if err != nil {
+		return err
+	}
+
+	for _, playlist := range playlists.Playlists {
+		err := downloadPlaylist(ctx, client, playlist.Name)
+		if err != nil {
+			fmt.Println("Error downloading playlist:", err)
+		} else {
+			fmt.Println("Playlist downloaded successfully:", playlist.Name)
+		}
+	}
+
+	return nil
 }
