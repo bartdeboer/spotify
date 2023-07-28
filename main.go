@@ -23,8 +23,6 @@ const (
 )
 
 var (
-	// auth *spotifyauth.Authenticator
-	// ch = make(chan *spotify.Client)
 	ch = make(chan *ClientToken)
 )
 
@@ -128,6 +126,13 @@ func main() {
 			} else {
 				fmt.Println("All playlists downloaded successfully.")
 			}
+		case "create-clean-all":
+			err := createCleanAllPlaylists()
+			if err != nil {
+				fmt.Println("Error creating clean playlists:", err)
+			} else {
+				fmt.Println("All playlists cleaned successfully.")
+			}
 		default:
 			fmt.Println("Invalid argument for 'playlists' command.")
 		}
@@ -168,7 +173,6 @@ func completeAuth(w http.ResponseWriter, r *http.Request, auth *spotifyauth.Auth
 		return
 	}
 
-	// Use the token to get an authenticated client
 	client := spotify.New(auth.Client(ctx, token))
 	fmt.Fprintf(w, "Login completed! You can close this window.")
 	ch <- &ClientToken{Client: client, Token: token}
@@ -273,4 +277,164 @@ func downloadPlaylists(ctx context.Context, client *spotify.Client) error {
 	}
 
 	return nil
+}
+
+type FullTrack struct {
+	SimpleTrack
+
+	AddedAt string `json:"added_at"`
+	AddedBy struct {
+		DisplayName  string `json:"display_name"`
+		ExternalURLs struct {
+			Spotify string `json:"spotify"`
+		} `json:"external_urls"`
+		Followers struct {
+			Total int    `json:"total"`
+			Href  string `json:"href"`
+		} `json:"followers"`
+		Href   string `json:"href"`
+		ID     string `json:"id"`
+		Images []struct {
+			Height int    `json:"height"`
+			Width  int    `json:"width"`
+			URL    string `json:"url"`
+		} `json:"images"`
+		URI string `json:"uri"`
+	} `json:"added_by"`
+	IsLocal bool `json:"is_local"`
+	Track   struct {
+		Artists          []Artist `json:"artists"`
+		AvailableMarkets []string `json:"available_markets"`
+		DiscNumber       int      `json:"disc_number"`
+		DurationMS       int      `json:"duration_ms"`
+		Explicit         bool     `json:"explicit"`
+		ExternalURLs     struct {
+			Spotify string `json:"spotify"`
+		} `json:"external_urls"`
+		Href        string `json:"href"`
+		ID          string `json:"id"`
+		Name        string `json:"name"`
+		PreviewURL  string `json:"preview_url"`
+		TrackNumber int    `json:"track_number"`
+		URI         string `json:"uri"`
+		Type        string `json:"type"`
+		Album       struct {
+			Name             string   `json:"name"`
+			Artists          []Artist `json:"artists"`
+			AlbumGroup       string   `json:"album_group"`
+			AlbumType        string   `json:"album_type"`
+			ID               string   `json:"id"`
+			URI              string   `json:"uri"`
+			AvailableMarkets []string `json:"available_markets"`
+			Href             string   `json:"href"`
+			Images           []struct {
+				Height int    `json:"height"`
+				Width  int    `json:"width"`
+				URL    string `json:"url"`
+			} `json:"images"`
+			ExternalURLs struct {
+				Spotify string `json:"spotify"`
+			} `json:"external_urls"`
+			ReleaseDate          string `json:"release_date"`
+			ReleaseDatePrecision string `json:"release_date_precision"`
+		} `json:"album"`
+		ExternalIDs struct {
+			ISRC string `json:"isrc"`
+		} `json:"external_ids"`
+		Popularity int         `json:"popularity"`
+		IsPlayable interface{} `json:"is_playable"`
+		LinkedFrom interface{} `json:"linked_from"`
+	} `json:"track"`
+}
+
+type SimpleTrack struct {
+	Name        string   `json:"name"`
+	TrackNumber int      `json:"track_number"`
+	Artists     []Artist `json:"artists"`
+	Album       struct {
+		Name        string   `json:"name"`
+		Artists     []Artist `json:"artists"`
+		ReleaseDate string   `json:"release_date"`
+	} `json:"album"`
+}
+
+type Artist struct {
+	Name string `json:"name"`
+}
+
+type CleanedPlaylistItem struct {
+	Track        string `json:"track"`
+	TrackNumber  int    `json:"track_number"`
+	TrackArtists string `json:"track_artists"`
+	Album        string `json:"album"`
+	AlbumArtists string `json:"album_artists"`
+	ReleaseDate  string `json:"release_date"`
+}
+
+func createCleanAllPlaylists() error {
+	files, err := ioutil.ReadDir("downloads")
+	if err != nil {
+		return err
+	}
+
+	for _, file := range files {
+		fileName := file.Name()
+		if strings.HasSuffix(fileName, ".json") {
+			err := cleanPlaylist(fileName)
+			if err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
+}
+
+func cleanPlaylist(fileName string) error {
+	filePath := fmt.Sprintf("downloads/%s", fileName)
+
+	data, err := ioutil.ReadFile(filePath)
+	if err != nil {
+		return err
+	}
+
+	var playlist []FullTrack
+	err = json.Unmarshal(data, &playlist)
+	if err != nil {
+		return err
+	}
+
+	var cleanedPlaylist []CleanedPlaylistItem
+	for _, track := range playlist {
+		cleanedTrack := CleanedPlaylistItem{
+			Track:        track.Track.Name,
+			TrackNumber:  track.Track.TrackNumber,
+			TrackArtists: getArtistsNames(track.Track.Artists),
+			Album:        track.Track.Album.Name,
+			AlbumArtists: getArtistsNames(track.Track.Album.Artists),
+			ReleaseDate:  track.Track.Album.ReleaseDate,
+		}
+		cleanedPlaylist = append(cleanedPlaylist, cleanedTrack)
+	}
+
+	cleanedData, err := json.MarshalIndent(cleanedPlaylist, "", "  ")
+	if err != nil {
+		return err
+	}
+
+	cleanedFilePath := fmt.Sprintf("cleaned/%s", fileName)
+	err = ioutil.WriteFile(cleanedFilePath, cleanedData, 0644)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func getArtistsNames(artists []Artist) string {
+	var names []string
+	for _, artist := range artists {
+		names = append(names, artist.Name)
+	}
+	return strings.Join(names, ", ")
 }
