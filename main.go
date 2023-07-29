@@ -34,13 +34,11 @@ type ClientToken struct {
 }
 
 func main() {
-	if len(os.Args) < 3 {
-		fmt.Println("Usage: spotify.exe <command> <argument>")
+	command, arg, err := parseArgs()
+	if err != nil {
+		fmt.Println(err)
 		return
 	}
-
-	command := os.Args[1]
-	arg := os.Args[2]
 
 	// Read the config file
 	config := Config{}
@@ -57,7 +55,7 @@ func main() {
 	)
 
 	token := &oauth2.Token{}
-	err := readJSONFromFile(tokenFilename, token)
+	err = readJSONFromFile(tokenFilename, token)
 
 	httpClient := oauth2.NewClient(context.Background(), oauth2.StaticTokenSource(token))
 	client := spotify.New(httpClient)
@@ -240,4 +238,12 @@ func getArtistsNames(artists []Artist) string {
 		names = append(names, artist.Name)
 	}
 	return strings.Join(names, ", ")
+}
+
+func parseArgs() (string, string, error) {
+	if len(os.Args) < 3 {
+		return "", "", fmt.Errorf("Usage: spotify.exe <command> <argument>")
+	}
+
+	return os.Args[1], os.Args[2], nil
 }
