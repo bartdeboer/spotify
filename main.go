@@ -47,92 +47,25 @@ func main() {
 		return
 	}
 
-	auth := spotifyauth.New(
-		spotifyauth.WithRedirectURL(redirectURI),
-		spotifyauth.WithScopes(spotifyauth.ScopePlaylistReadPrivate, spotifyauth.ScopeUserLibraryRead),
-		spotifyauth.WithClientID(config.ClientID),
-		spotifyauth.WithClientSecret(config.ClientSecret),
-	)
-
 	token := &oauth2.Token{}
 	err = readJSONFromFile(tokenFilename, token)
-
-	httpClient := oauth2.NewClient(context.Background(), oauth2.StaticTokenSource(token))
-	client := spotify.New(httpClient)
+	if err != nil {
+		fmt.Println("Error reading token from file:", err)
+		return
+	}
 
 	ctx := context.Background()
 
-	if err == nil && token.Valid() {
-		client = spotify.New(auth.Client(ctx, token))
-	} else {
-		http.HandleFunc("/callback", func(w http.ResponseWriter, r *http.Request) {
-			completeAuth(w, r, auth, ctx)
-		})
-
-		server := &http.Server{Addr: ":8080"}
-		go func() {
-			if err := server.ListenAndServe(); err != http.ErrServerClosed {
-				fmt.Println("ListenAndServe():", err)
-			}
-		}()
-
-		url := auth.AuthURL(state)
-		fmt.Println("Please log in to Spotify by visiting the following page in your browser:", url)
-
-		clientToken := <-ch
-		token = clientToken.Token
-		shutdown(server, ctx)
-
-		if err == nil {
-			err = writeJSONToFile(tokenFilename, token)
-			if err != nil {
-				fmt.Println("Error saving token to file:", err)
-			}
-		} else {
-			fmt.Println("Error obtaining token:", err)
-			return
-		}
+	client, err := getSpotifyClient(ctx, config, token)
+	if err != nil {
+		fmt.Println("Error getting Spotify client:", err)
+		return
 	}
 
-	switch command {
-	case "playlists":
-		switch arg {
-		case "download":
-			if len(os.Args) < 4 {
-				fmt.Println("Usage: spotify.exe playlists download <playlist_name>")
-				return
-			}
-			playlistName := os.Args[3]
-			err := downloadPlaylist(ctx, client, playlistName)
-			if err != nil {
-				fmt.Println("Error downloading playlist:", err)
-			} else {
-				fmt.Println("Playlist downloaded successfully.")
-			}
-		case "list":
-			err := listPlaylists(ctx, client)
-			if err != nil {
-				fmt.Println("Error listing playlists:", err)
-			}
-		case "download-all":
-			err := downloadPlaylists(ctx, client)
-			if err != nil {
-				fmt.Println("Error downloading playlists:", err)
-			} else {
-				fmt.Println("All playlists downloaded successfully.")
-			}
-		case "create-clean-all":
-			err := createCleanAllPlaylists()
-			if err != nil {
-				fmt.Println("Error creating clean playlists:", err)
-			} else {
-				fmt.Println("All playlists cleaned successfully.")
-			}
-		default:
-			fmt.Println("Invalid argument for 'playlists' command.")
-		}
-	default:
-		fmt.Println("Invalid command.")
+	err = executeCommand(ctx, command, arg, client)
+	if err != nil {
+		fmt.Println(err)
+		return
 	}
 }
 
@@ -246,4 +179,85 @@ func parseArgs() (string, string, error) {
 	}
 
 	return os.Args[1], os.Args[2], nil
+}
+
+func getSpotifyClient(ctx context.Context, config Config, token *oauth2.Token) (*spotify.Client, error) {
+	auth := spotifyauth.New(
+		spotifyauth.WithRedirectURL(redirectURI),
+		spotifyauth.WithScopes(spotifyauth.ScopePlaylistReadPrivate, spotifyauth.ScopeUserLibraryRead),
+		spotifyauth.WithClientID(config.ClientID),
+		spotifyauth.WithClientSecret(config.ClientSecret),
+	)
+
+	httpClient := oauth2.NewClient(context.Background(), oauth2.StaticTokenSource(token))
+	client := spotify.New(httpClient)
+
+	if token.Valid() {
+		client = spotify.New(auth.Client(ctx, token))
+	} else {
+		http.HandleFunc("/callback", func(w http.ResponseWriter, r *http.Request) {
+			completeAuth(w, r, auth, ctx)
+		})
+
+		server := &http.Server{Addr: ":8080"}
+		go func() {
+			if err := server.ListenAndServe(); err != http.ErrServerClosed {
+				fmt.Println("ListenAndServe():", err)
+			}
+		}()
+
+		url := auth.AuthURL(state)
+		fmt.Println("Please log in to Spotify by visiting the following page in your browser:", url)
+
+		clientToken := <-ch
+		token = clientToken.Token
+		shutdown(server, ctx)
+
+		if err := writeJSONToFile(tokenFilename, token); err != nil {
+			fmt.Println("Error saving token to file:", err)
+			return nil, err
+		}
+	}
+
+	return client, nil
+}
+
+func executeCommand(ctx context.Context, command string, arg string, client *spotify.Client) error {
+	switch command {
+	case "playlists":
+		switch arg {
+		case "download":
+			if len(os.Args) < 4 {
+				return fmt.Errorf("Usage: spotify.exe playlists download <playlist_name>")
+			}
+			playlistName := os.Args[3]
+			err := downloadPlaylist(ctx, client, playlistName)
+			if err != nil {
+				return fmt.Errorf("Error downloading playlist: %v", err)
+			}
+			fmt.Println("Playlist downloaded successfully.")
+		case "list":
+			err := listPlaylists(ctx, client)
+			if err != nil {
+				return fmt.Errorf("Error listing playlists: %v", err)
+			}
+		case "download-all":
+			err := downloadPlaylists(ctx, client)
+			if err != nil {
+				return fmt.Errorf("Error downloading playlists: %v", err)
+			}
+			fmt.Println("All playlists downloaded successfully.")
+		case "create-clean-all":
+			err := createCleanAllPlaylists()
+			if err != nil {
+				return fmt.Errorf("Error creating clean playlists: %v", err)
+			}
+			fmt.Println("All playlists cleaned successfully.")
+		default:
+			return fmt.Errorf("Invalid argument for 'playlists' command.")
+		}
+	default:
+		return fmt.Errorf("Invalid command.")
+	}
+	return nil
 }
