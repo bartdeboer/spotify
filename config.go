@@ -2,12 +2,11 @@ package main
 
 import (
 	"encoding/json"
-	"io/ioutil"
 	"os"
 )
 
 func readJSONFromFile(filename string, v interface{}) error {
-	data, err := ioutil.ReadFile(filename)
+	data, err := os.ReadFile(filename)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil

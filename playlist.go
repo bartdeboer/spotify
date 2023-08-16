@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"strings"
 
@@ -89,7 +88,7 @@ func downloadPlaylists(ctx context.Context, client *spotify.Client) error {
 }
 
 func createCleanAllPlaylists() error {
-	files, err := ioutil.ReadDir("downloads")
+	files, err := os.ReadDir("downloads")
 	if err != nil {
 		return err
 	}
@@ -110,7 +109,7 @@ func createCleanAllPlaylists() error {
 func cleanPlaylist(fileName string) error {
 	filePath := fmt.Sprintf("downloads/%s", fileName)
 
-	data, err := ioutil.ReadFile(filePath)
+	data, err := os.ReadFile(filePath)
 	if err != nil {
 		return err
 	}
