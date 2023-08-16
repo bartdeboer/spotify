@@ -13,19 +13,14 @@ import (
 )
 
 func downloadPlaylist(ctx context.Context, client *spotify.Client, playlistName string) error {
-	user, err := client.CurrentUser(ctx)
-	if err != nil {
-		return err
-	}
-
-	playlists, err := client.GetPlaylistsForUser(ctx, user.ID)
+	_, playlists, err := getUserPlaylists(ctx, client)
 	if err != nil {
 		return err
 	}
 
 	var playlistID spotify.ID
 	found := false
-	for _, playlist := range playlists.Playlists {
+	for _, playlist := range playlists {
 		if strings.EqualFold(playlist.Name, playlistName) {
 			playlistID = playlist.ID
 			found = true
@@ -37,30 +32,24 @@ func downloadPlaylist(ctx context.Context, client *spotify.Client, playlistName 
 		return errors.New("playlist not found")
 	}
 
-	var allTracks []spotify.PlaylistTrack
-	offset := 0
-	limit := 100
-
-	for {
-		playlistTracks, err := client.GetPlaylistTracks(ctx, playlistID, spotify.Limit(limit), spotify.Offset(offset))
-		if err != nil {
-			return err
-		}
-
-		allTracks = append(allTracks, playlistTracks.Tracks...)
-
-		if len(allTracks) >= playlistTracks.Total {
-			break
-		}
-
-		offset += limit
+	allTracks, err := fetchAllPlaylistTracks(ctx, client, playlistID)
+	if err != nil {
+		return err
 	}
 
 	playlistFile, err := os.Create(fmt.Sprintf("downloads/%s.json", playlistName))
 	if err != nil {
 		return err
 	}
-	defer playlistFile.Close()
+	defer func() {
+		if closeErr := playlistFile.Close(); closeErr != nil {
+			if err != nil {
+				err = fmt.Errorf("%s; %s", err, closeErr)
+			} else {
+				err = closeErr
+			}
+		}
+	}()
 
 	encoder := json.NewEncoder(playlistFile)
 	encoder.SetIndent("", "  ")
@@ -68,18 +57,13 @@ func downloadPlaylist(ctx context.Context, client *spotify.Client, playlistName 
 }
 
 func listPlaylists(ctx context.Context, client *spotify.Client) error {
-	user, err := client.CurrentUser(ctx)
-	if err != nil {
-		return err
-	}
-
-	playlists, err := client.GetPlaylistsForUser(ctx, user.ID)
+	_, playlists, err := getUserPlaylists(ctx, client)
 	if err != nil {
 		return err
 	}
 
 	fmt.Println("Playlists:")
-	for _, playlist := range playlists.Playlists {
+	for _, playlist := range playlists {
 		fmt.Printf("- %s (ID: %s)\n", playlist.Name, playlist.ID)
 	}
 
@@ -87,23 +71,18 @@ func listPlaylists(ctx context.Context, client *spotify.Client) error {
 }
 
 func downloadPlaylists(ctx context.Context, client *spotify.Client) error {
-	user, err := client.CurrentUser(ctx)
+	_, playlists, err := getUserPlaylists(ctx, client)
 	if err != nil {
 		return err
 	}
 
-	playlists, err := client.GetPlaylistsForUser(ctx, user.ID)
-	if err != nil {
-		return err
-	}
-
-	for _, playlist := range playlists.Playlists {
+	for _, playlist := range playlists {
 		err := downloadPlaylist(ctx, client, playlist.Name)
 		if err != nil {
 			fmt.Println("Error downloading playlist:", err)
-		} else {
-			fmt.Println("Playlist downloaded successfully:", playlist.Name)
+			return err
 		}
+		fmt.Println("Playlist downloaded successfully:", playlist.Name)
 	}
 
 	return nil
@@ -161,10 +140,51 @@ func cleanPlaylist(fileName string) error {
 	}
 
 	cleanedFilePath := fmt.Sprintf("cleaned/%s", fileName)
-	err = ioutil.WriteFile(cleanedFilePath, cleanedData, 0644)
+	err = os.WriteFile(cleanedFilePath, cleanedData, 0644)
 	if err != nil {
 		return err
 	}
 
 	return nil
+}
+
+func getUserPlaylists(ctx context.Context, client *spotify.Client) (*spotify.PrivateUser, []spotify.SimplePlaylist, error) {
+	user, err := client.CurrentUser(ctx)
+	if err != nil {
+		return &spotify.PrivateUser{}, nil, err
+	}
+
+	playlists, err := client.GetPlaylistsForUser(ctx, user.ID)
+	if err != nil {
+		return &spotify.PrivateUser{}, nil, err
+	}
+
+	return user, playlists.Playlists, nil
+}
+
+const (
+	trackFetchLimit = 100
+	initialOffset   = 0
+)
+
+func fetchAllPlaylistTracks(ctx context.Context, client *spotify.Client, playlistID spotify.ID) ([]spotify.PlaylistTrack, error) {
+	var allTracks []spotify.PlaylistTrack
+	offset := initialOffset
+
+	for {
+		playlistTracks, err := client.GetPlaylistTracks(ctx, playlistID, spotify.Limit(trackFetchLimit), spotify.Offset(offset))
+		if err != nil {
+			return nil, err
+		}
+
+		allTracks = append(allTracks, playlistTracks.Tracks...)
+
+		if len(allTracks) >= playlistTracks.Total {
+			break
+		}
+
+		offset += trackFetchLimit
+	}
+
+	return allTracks, nil
 }

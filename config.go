@@ -22,5 +22,5 @@ func writeJSONToFile(filename string, v interface{}) error {
 	if err != nil {
 		return err
 	}
-	return ioutil.WriteFile(filename, data, 0600)
+	return os.WriteFile(filename, data, 0600)
 }
