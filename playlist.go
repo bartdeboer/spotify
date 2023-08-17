@@ -55,6 +55,39 @@ func downloadPlaylist(ctx context.Context, client *spotify.Client, playlistName 
 	return encoder.Encode(allTracks)
 }
 
+func displayPlaylist(ctx context.Context, client *spotify.Client, playlistName string) error {
+	_, playlists, err := getUserPlaylists(ctx, client)
+	if err != nil {
+		return err
+	}
+
+	var playlistID spotify.ID
+	found := false
+	for _, playlist := range playlists {
+		if strings.EqualFold(playlist.Name, playlistName) {
+			playlistID = playlist.ID
+			found = true
+			break
+		}
+	}
+
+	if !found {
+		return errors.New("playlist not found")
+	}
+
+	allTracks, err := fetchAllPlaylistTracks(ctx, client, playlistID)
+	if err != nil {
+		return err
+	}
+
+	fmt.Println("Playlist:", playlistName)
+	for _, track := range allTracks {
+		fmt.Printf("- %s by %s\n", track.Track.Name, getSpotifyArtistsNames(track.Track.Artists))
+	}
+
+	return nil
+}
+
 func listPlaylists(ctx context.Context, client *spotify.Client) error {
 	_, playlists, err := getUserPlaylists(ctx, client)
 	if err != nil {
@@ -186,4 +219,37 @@ func fetchAllPlaylistTracks(ctx context.Context, client *spotify.Client, playlis
 	}
 
 	return allTracks, nil
+}
+
+func showPlaylistInfo(ctx context.Context, client *spotify.Client, playlistName string) error {
+	_, playlists, err := getUserPlaylists(ctx, client)
+	if err != nil {
+		return err
+	}
+
+	var playlistID spotify.ID
+	found := false
+	for _, playlist := range playlists {
+		if strings.EqualFold(playlist.Name, playlistName) {
+			playlistID = playlist.ID
+			found = true
+			break
+		}
+	}
+
+	if !found {
+		return errors.New("playlist not found")
+	}
+
+	allTracks, err := fetchAllPlaylistTracks(ctx, client, playlistID)
+	if err != nil {
+		return err
+	}
+
+	fmt.Println("Playlist:", playlistName)
+	for _, track := range allTracks {
+		fmt.Printf("- %s by %s\n", track.Track.Name, getSpotifyArtistsNames(track.Track.Artists))
+	}
+
+	return nil
 }

@@ -173,6 +173,14 @@ func getArtistsNames(artists []Artist) string {
 	return strings.Join(names, ", ")
 }
 
+func getSpotifyArtistsNames(artists []spotify.SimpleArtist) string {
+	var names []string
+	for _, artist := range artists {
+		names = append(names, artist.Name)
+	}
+	return strings.Join(names, ", ")
+}
+
 func parseArgs() (string, string, error) {
 	if len(os.Args) < 3 {
 		return "", "", fmt.Errorf("Usage: spotify.exe <command> <argument>")
@@ -253,6 +261,15 @@ func executeCommand(ctx context.Context, command string, arg string, client *spo
 				return fmt.Errorf("Error creating clean playlists: %v", err)
 			}
 			fmt.Println("All playlists cleaned successfully.")
+		case "show-info":
+			if len(os.Args) < 4 {
+				return fmt.Errorf("Usage: spotify.exe playlists show-info <playlist_name>")
+			}
+			playlistName := os.Args[3]
+			err := showPlaylistInfo(ctx, client, playlistName)
+			if err != nil {
+				return fmt.Errorf("Error showing playlist info: %v", err)
+			}
 		default:
 			return fmt.Errorf("Invalid argument for 'playlists' command.")
 		}
