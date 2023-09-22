@@ -1,2 +1,4 @@
 
 *.json
+.gogpt/
+gogpt.exe
